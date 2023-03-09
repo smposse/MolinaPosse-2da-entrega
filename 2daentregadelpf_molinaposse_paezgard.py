@@ -400,17 +400,92 @@ plt.ylabel("Cantidad", size = 15)
 
 """**Análisis Multivariado**"""
 
-df_salud2_pca
+df_saludmod = df_salud2[["AgeCategory", "Sex", "Smoking", "AlcoholDrinking", "HeartDisease","GenHealth", "BMI", "Stroke", "DiffWalking", "PhysicalActivity"]].copy()
+df_saludmod.head()
 
-sns.pairplot(df_salud2,hue = 'HeartDisease' , size = 7 , palette = 'Set2')
-
-sns.pairplot(df_salud2,hue = 'Sex' , size = 3 , palette = 'Set2')
-
-#Correlaciones
-plt.figure(dpi = 120,figsize= (5,4))
-mask = np.triu(np.ones_like(df_salud2.corr(),dtype = bool))
-sns.heatmap(df_salud2.corr(),mask = mask, fmt = ".2f",annot=True,lw=1,cmap = 'plasma')
-plt.yticks(rotation = 0)
-plt.xticks(rotation = 90)
-plt.title('Correlation Heatmap')
+plt.figure(figsize=(15,15))
+sns.heatmap(df_saludmod[['AgeCategory', 'Smoking', 'AlcoholDrinking', 'Stroke', 'DiffWalking', 'Sex',
+                    'PhysicalActivity','BMI']].corr(), annot = True, cmap = 'PuRd')
+plt.title('Heatmap', fontsize = 20)
 plt.show()
+
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error, r2_score
+
+df_saludmod["Sex"] = df_salud2["Sex"].replace({"Female": 0, "Male": 1})
+
+"""Para crear un modelo, se intenterá predecir el valor de "HeartDisease". 
+
+Crearemos un árbol de desición de los principales componentes del data sey, posteriormente, utilizaremos el análisis de componentes principales, a fin de poder evaluar la aplicación.
+
+**CREACIÓN DEL MODELO**
+"""
+
+X = df_saludmod.drop('HeartDisease',axis=1)
+y = df_saludmod['HeartDisease']
+
+X
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+arbol_de_decision = DecisionTreeClassifier(max_depth=4, random_state = 25)
+
+# Entrenamiento del Modelo
+arbol_de_decision.fit(X_train,y_train)
+
+y_train_pred = arbol_de_decision.predict(X_train)
+y_test_pred = arbol_de_decision.predict(X_test)
+
+train_accuracy = accuracy_score(y_train, y_train_pred)
+test_accuracy = accuracy_score(y_test, y_test_pred)
+print('% de aciertos sobre el set de entrenamiento:', train_accuracy)
+print('% de aciertos sobre el set de evaluación:',test_accuracy)
+
+X_standard = StandardScaler().fit_transform(X)
+
+"""Correlación de las variables"""
+
+plt.figure(dpi = 100, figsize = (5,4))
+print("Joint plot de HeartDisease con otras variables ==> \n")
+for i in  df_saludmod.columns:
+    if i != 'HeartDisease' and i != 'Outcome':
+        print(f"Correlacion entre HeartDisease y {i} ==> ",df_saludmod.corr().loc['HeartDisease'][i])
+        sns.jointplot(x='HeartDisease',y=i,data=df_salud2,kind = 'scatter',color = 'purple')
+        plt.show()
+
+pca = PCA(n_components= 2)
+X_pca = pca.fit_transform(X_standard)
+
+print('Tamaño de la muestra antes de aplicar PCA:',X.shape)
+print('Tamaño de la muestra después de aplicar PCA:',X_pca.shape)
+
+varianza = pca.explained_variance_ratio_
+print('suma:',sum(varianza[0:2]))
+
+plt.plot(np.cumsum(pca.explained_variance_ratio_))
+plt.xlabel('Número de componentes')
+plt.ylabel('Varianza explicada acumulada')
+plt.show()
+
+pca = PCA(n_components = 2)
+df_pca = pca.fit_transform(X_train)
+
+# Fit a linear regression model
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Fit a PCA linear regression model
+model_pca = LinearRegression()
+model_pca.fit(df_pca, y_train)
+
+# Predict response variable on testing data
+y_pred_pca = model_pca.predict(pca.fit_transform(X_test))
+y_pred_linear = model.predict(X_test)
+print("Mean squared error PCA: ", mean_squared_error(y_test, y_pred_pca))
+print("Mean squared error Linear: ", mean_squared_error(y_test, y_pred_linear))
+
+# Compute R2 training data
+print("R2 PCA: ", r2_score(y_train, model_pca.predict(df_pca)))
+print("R2 Linear: ", r2_score(y_train, model.predict(X_train)))
